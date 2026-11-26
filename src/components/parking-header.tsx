@@ -47,6 +47,8 @@ export function ParkingHeader() {
     sessions,
     bookings,
     resolveException,
+    mqttConnected,
+    reconnectMqtt,
   } = useParking();
 
   const [showSearchBar, setShowSearchBar] = useState(false);
@@ -117,7 +119,37 @@ export function ParkingHeader() {
             </View>
 
             <View>
-              <Text style={styles.brandSub}>ParkingPro</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.brandSub}>ParkingPro</Text>
+                <Pressable
+                  onPress={() => reconnectMqtt()}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 3,
+                    backgroundColor: mqttConnected ? '#dcfce7' : '#fee2e2',
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                    borderRadius: 4,
+                  }}>
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: mqttConnected ? '#16a34a' : '#ef4444',
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: '700',
+                      color: mqttConnected ? '#15803d' : '#b91c1c',
+                    }}>
+                    {mqttConnected ? 'HiveMQ' : 'MQTT Off'}
+                  </Text>
+                </Pressable>
+              </View>
               <Text style={styles.pageTitle} numberOfLines={1}>
                 {getHeaderTitle()}
               </Text>

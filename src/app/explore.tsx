@@ -72,7 +72,19 @@ export default function ManagementHubScreen() {
     resolveException,
     revenueToday,
     sessions,
+    mqttConnected,
+    mqttStatusText,
+    lastMqttMessage,
+    reconnectMqtt,
+    publishMqtt,
   } = useParking();
+
+  // MQTT Config State
+  const [mqttHost, setMqttHost] = useState('172.20.10.2');
+  const [mqttPort, setMqttPort] = useState('1883');
+  const [testTopic, setTestTopic] = useState('smartparking/telemetry');
+  const [testPayload, setTestPayload] = useState('{"temperature": 28.5, "sensor_status": "OK"}');
+  const [publishFeedback, setPublishFeedback] = useState<string | null>(null);
 
   // Quick Add Booking Form
   const [customerName, setCustomerName] = useState('');
@@ -388,6 +400,118 @@ export default function ManagementHubScreen() {
                 keyboardType="decimal-pad"
                 style={styles.input}
               />
+            </View>
+          </View>
+
+          {/* MQTT & Firebase IoT Broker Card */}
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={styles.cardTitle}>MQTT Broker (HiveMQ)</Text>
+                <Text style={styles.itemMeta}>Protocol: MQTT TCP / WS • Data sync: Firebase</Text>
+              </View>
+              <View
+                style={[
+                  styles.badge,
+                  { backgroundColor: mqttConnected ? '#dcfce7' : '#fee2e2' },
+                ]}>
+                <Text
+                  style={[
+                    styles.badgeText,
+                    { color: mqttConnected ? '#15803d' : '#b91c1c' },
+                  ]}>
+                  {mqttConnected ? 'Connected' : 'Offline'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 8, marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: '#4b5563' }}>Status: {mqttStatusText}</Text>
+              
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 2 }}>
+                  <Text style={styles.itemMeta}>Host IP</Text>
+                  <TextInput
+                    value={mqttHost}
+                    onChangeText={setMqttHost}
+                    placeholder="172.20.10.2"
+                    placeholderTextColor="#9ca3af"
+                    style={styles.input}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemMeta}>Port</Text>
+                  <TextInput
+                    value={mqttPort}
+                    onChangeText={setMqttPort}
+                    placeholder="1883"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => reconnectMqtt(mqttHost, parseInt(mqttPort, 10) || 1883)}
+                style={[styles.primaryBtn, { paddingVertical: 10, marginTop: 4 }]}>
+                <Text style={styles.primaryBtnText}>🔄 Reconnect HiveMQ</Text>
+              </Pressable>
+
+              {/* Subscribed Topics List */}
+              <View style={{ backgroundColor: '#f9fafb', padding: 10, borderRadius: 8, gap: 4, marginTop: 4 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151' }}>Subscribed Topics:</Text>
+                <Text style={{ fontSize: 11, color: '#4b5563' }}>• smartparking/telemetry (Sync to Firebase)</Text>
+                <Text style={{ fontSize: 11, color: '#4b5563' }}>• smartparking/status (Slot Live State)</Text>
+                <Text style={{ fontSize: 11, color: '#4b5563' }}>• smartparking/event (Entry/Exit Gate)</Text>
+                <Text style={{ fontSize: 11, color: '#4b5563' }}>• smartparking/alert (Emergency Alerts)</Text>
+              </View>
+
+              {/* Last MQTT Message */}
+              {lastMqttMessage && (
+                <View style={{ backgroundColor: '#eff6ff', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe', gap: 2 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#1d4ed8' }}>
+                    Last Message ({lastMqttMessage.timestamp}):
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#1e40af' }}>Topic: {lastMqttMessage.topic}</Text>
+                  <Text style={{ fontSize: 11, color: '#1e40af' }} numberOfLines={2}>
+                    Data: {JSON.stringify(lastMqttMessage.data)}
+                  </Text>
+                </View>
+              )}
+
+              {/* Test Publish Section */}
+              <View style={{ marginTop: 8, gap: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#374151' }}>Test Publish:</Text>
+                <TextInput
+                  value={testTopic}
+                  onChangeText={setTestTopic}
+                  placeholder="smartparking/telemetry"
+                  placeholderTextColor="#9ca3af"
+                  style={styles.input}
+                />
+                <TextInput
+                  value={testPayload}
+                  onChangeText={setTestPayload}
+                  placeholder='{"status": "ok"}'
+                  placeholderTextColor="#9ca3af"
+                  style={styles.input}
+                />
+                <Pressable
+                  onPress={() => {
+                    const ok = publishMqtt(testTopic, testPayload);
+                    setPublishFeedback(ok ? '✓ Published successfully!' : '✗ Publish failed: broker not connected');
+                    setTimeout(() => setPublishFeedback(null), 3000);
+                  }}
+                  style={[styles.primaryBtn, { backgroundColor: '#16a34a', paddingVertical: 10 }]}>
+                  <Text style={styles.primaryBtnText}>📤 Publish to Topic</Text>
+                </Pressable>
+                {publishFeedback && (
+                  <Text style={{ fontSize: 12, textAlign: 'center', color: publishFeedback.startsWith('✓') ? '#16a34a' : '#dc2626', fontWeight: '600' }}>
+                    {publishFeedback}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
         </View>

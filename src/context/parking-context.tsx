@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { mqttService, MQTTMessagePayload } from '@/services/mqtt-service';
+import { firebaseService } from '@/services/firebase-service';
 
 export type SlotStatus = 'available' | 'occupied' | 'reserved' | 'maintenance' | 'locked';
 export type VehicleType = 'car' | 'motorcycle' | 'truck' | 'disabled';
@@ -89,6 +91,11 @@ interface ParkingContextValue {
   setActiveMoreSection: (section: MoreSectionType) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  mqttConnected: boolean;
+  mqttStatusText: string;
+  lastMqttMessage: MQTTMessagePayload | null;
+  publishMqtt: (topic: string, data: object | string) => boolean;
+  reconnectMqtt: (host?: string, port?: number) => void;
   updateSlotStatus: (id: string, status: SlotStatus) => void;
   lockSlot: (id: string) => void;
   addNewSlot: (params: {
@@ -410,6 +417,92 @@ export function ParkingProvider({ children }: { children: React.ReactNode }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [activeMoreSection, setActiveMoreSection] = useState<MoreSectionType>('bookings');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [mqttConnected, setMqttConnected] = useState<boolean>(false);
+  const [mqttStatusText, setMqttStatusText] = useState<string>('Initializing MQTT...');
+  const [lastMqttMessage, setLastMqttMessage] = useState<MQTTMessagePayload | null>(null);
+
+  // Khởi tạo MQTT kết nối tới HiveMQ và Firebase
+  useEffect(() => {
+    firebaseService.init();
+
+    const unsubStatus = mqttService.onStatusChange((connected, text) => {
+      setMqttConnected(connected);
+      setMqttStatusText(text);
+    });
+
+    const unsubMsg = mqttService.onMessage((payload) => {
+      setLastMqttMessage(payload);
+
+      // Xử lý các topic và đồng bộ Firebase
+      switch (payload.topic) {
+        case 'smartparking/telemetry':
+          // Lưu dữ liệu telemetry lên Firebase
+          firebaseService.logTelemetry(payload.data);
+          break;
+
+        case 'smartparking/status':
+          // Cập nhật slot đỗ xe từ cảm biến / thiết bị IoT
+          if (payload.data && typeof payload.data === 'object') {
+            const { slotId, status, licensePlate } = payload.data;
+            if (slotId && status) {
+              setSlots((prev) =>
+                prev.map((s) =>
+                  s.id === slotId || s.slotNumber.toUpperCase() === String(slotId).toUpperCase()
+                    ? {
+                        ...s,
+                        status: status as SlotStatus,
+                        licensePlate: status === 'occupied' ? licensePlate || s.licensePlate : undefined,
+                      }
+                    : s
+                )
+              );
+              firebaseService.syncSlotStatus(slotId, status, payload.data);
+            }
+          }
+          break;
+
+        case 'smartparking/event':
+          // Sự kiện xe qua cổng, quẹt thẻ...
+          firebaseService.logEvent('GATE_EVENT', payload.data);
+          break;
+
+        case 'smartparking/alert':
+          // Cảnh báo đỗ sai chỗ, quá giờ...
+          if (payload.data) {
+            const newEx: ExceptionCaseItem = {
+              id: `EX-${Math.floor(300 + Math.random() * 699)}`,
+              type: payload.data.type || 'Sensor Alert',
+              vehicle: payload.data.vehicle || 'Unknown',
+              slot: payload.data.slot || 'N/A',
+              time: 'Just now',
+              severity: payload.data.severity || 'Medium',
+            };
+            setExceptions((prev) => [newEx, ...prev]);
+            firebaseService.logAlert(newEx);
+          }
+          break;
+      }
+    });
+
+    // Kết nối tới HiveMQ broker
+    mqttService.connect({
+      host: '172.20.10.2',
+      port: 1883,
+    });
+
+    return () => {
+      unsubStatus();
+      unsubMsg();
+    };
+  }, []);
+
+  const publishMqtt = (topic: string, data: object | string) => {
+    return mqttService.publish(topic, data);
+  };
+
+  const reconnectMqtt = (host?: string, port?: number) => {
+    mqttService.connect({ host, port });
+  };
 
   const updateSlotStatus = (id: string, status: SlotStatus) => {
     setSlots((prev) =>
@@ -621,6 +714,11 @@ export function ParkingProvider({ children }: { children: React.ReactNode }) {
     setActiveMoreSection,
     searchQuery,
     setSearchQuery,
+    mqttConnected,
+    mqttStatusText,
+    lastMqttMessage,
+    publishMqtt,
+    reconnectMqtt,
     updateSlotStatus,
     lockSlot,
     addNewSlot,
