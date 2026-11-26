@@ -1,26 +1,26 @@
-import mqtt from 'mqtt';
+import mqtt from "mqtt";
 
 export interface MQTTConfig {
   host: string;
   port: number;
-  protocol: 'ws' | 'wss' | 'tcp';
+  protocol: "ws" | "wss" | "tcp";
   username?: string;
   password?: string;
 }
 
 export const DEFAULT_MQTT_CONFIG: MQTTConfig = {
-  host: '172.20.10.2',
+  host: "172.20.10.2",
   port: 1883,
   // Trong môi trường React Native / Mobile / Expo, MQTT qua WebSocket (ws://) thường được broker HiveMQ mở ở port 8000/8083 hoặc 1883
   // Hỗ trợ fallback ws://172.20.10.2:8083/mqtt hoặc ws://172.20.10.2:1883
-  protocol: 'ws',
+  protocol: "ws",
 };
 
 export const MQTT_TOPICS = [
-  'smartparking/telemetry',
-  'smartparking/status',
-  'smartparking/event',
-  'smartparking/alert',
+  "smartparking/telemetry",
+  "smartparking/status",
+  "smartparking/event",
+  "smartparking/alert",
 ] as const;
 
 export type MQTTTopic = (typeof MQTT_TOPICS)[number];
@@ -53,7 +53,7 @@ class MQTTService {
       try {
         this.client.end(true);
       } catch (err) {
-        console.warn('Error closing existing MQTT client:', err);
+        console.warn("Error closing existing MQTT client:", err);
       }
     }
 
@@ -65,7 +65,7 @@ class MQTTService {
 
     try {
       const clientId = `smartparking_app_${Math.random().toString(16).substring(2, 8)}`;
-      
+
       this.client = mqtt.connect(brokerUrl, {
         clientId,
         clean: true,
@@ -75,14 +75,14 @@ class MQTTService {
         password: config.password || undefined,
       });
 
-      this.client.on('connect', () => {
+      this.client.on("connect", () => {
         this.isConnected = true;
         this.notifyStatus(true, `Connected to ${host}:${port}`);
         console.log(`[MQTT] Connected to broker: ${brokerUrl}`);
 
         // Subscribe tất cả các topic yêu cầu
         MQTT_TOPICS.forEach((topic) => {
-          this.client?.subscribe(topic, { qos: 0 }, (err) => {
+          this.client?.subscribe(topic, { qos: 0 }, (err: any) => {
             if (err) {
               console.error(`[MQTT] Failed to subscribe to ${topic}:`, err);
             } else {
@@ -92,56 +92,60 @@ class MQTTService {
         });
       });
 
-      this.client.on('message', (topic, message) => {
-        try {
-          const rawStr = message.toString();
-          let parsedData: any;
+      this.client.on(
+        "message",
+        (topic: any, message: { toString: () => any }) => {
           try {
-            parsedData = JSON.parse(rawStr);
-          } catch {
-            parsedData = rawStr;
+            const rawStr = message.toString();
+            let parsedData: any;
+            try {
+              parsedData = JSON.parse(rawStr);
+            } catch {
+              parsedData = rawStr;
+            }
+
+            const payload: MQTTMessagePayload = {
+              topic,
+              data: parsedData,
+              timestamp: new Date().toLocaleTimeString(),
+            };
+
+            this.messageListeners.forEach((listener) => listener(payload));
+          } catch (err) {
+            console.error("[MQTT] Message parsing error:", err);
           }
+        },
+      );
 
-          const payload: MQTTMessagePayload = {
-            topic,
-            data: parsedData,
-            timestamp: new Date().toLocaleTimeString(),
-          };
-
-          this.messageListeners.forEach((listener) => listener(payload));
-        } catch (err) {
-          console.error('[MQTT] Message parsing error:', err);
-        }
-      });
-
-      this.client.on('error', (err) => {
-        console.warn('[MQTT] Connection error:', err.message);
+      this.client.on("error", (err: { message: any }) => {
+        console.warn("[MQTT] Connection error:", err.message);
         this.isConnected = false;
         this.notifyStatus(false, `Error: ${err.message}`);
       });
 
-      this.client.on('close', () => {
+      this.client.on("close", () => {
         this.isConnected = false;
-        this.notifyStatus(false, 'Disconnected');
+        this.notifyStatus(false, "Disconnected");
       });
 
-      this.client.on('offline', () => {
+      this.client.on("offline", () => {
         this.isConnected = false;
-        this.notifyStatus(false, 'Broker Offline');
+        this.notifyStatus(false, "Broker Offline");
       });
     } catch (e: any) {
       this.isConnected = false;
-      this.notifyStatus(false, `Failed: ${e?.message || 'Connection error'}`);
-      console.error('[MQTT] Exception starting client:', e);
+      this.notifyStatus(false, `Failed: ${e?.message || "Connection error"}`);
+      console.error("[MQTT] Exception starting client:", e);
     }
   }
 
   public publish(topic: string, message: object | string) {
     if (!this.client || !this.isConnected) {
-      console.warn('[MQTT] Cannot publish, client not connected');
+      console.warn("[MQTT] Cannot publish, client not connected");
       return false;
     }
-    const payloadStr = typeof message === 'string' ? message : JSON.stringify(message);
+    const payloadStr =
+      typeof message === "string" ? message : JSON.stringify(message);
     this.client.publish(topic, payloadStr);
     return true;
   }
@@ -149,13 +153,15 @@ class MQTTService {
   public onMessage(handler: MessageHandler) {
     this.messageListeners.push(handler);
     return () => {
-      this.messageListeners = this.messageListeners.filter((l) => l !== handler);
+      this.messageListeners = this.messageListeners.filter(
+        (l) => l !== handler,
+      );
     };
   }
 
   public onStatusChange(handler: ConnectionStatusHandler) {
     this.statusListeners.push(handler);
-    handler(this.isConnected, this.isConnected ? 'Connected' : 'Disconnected');
+    handler(this.isConnected, this.isConnected ? "Connected" : "Disconnected");
     return () => {
       this.statusListeners = this.statusListeners.filter((l) => l !== handler);
     };
@@ -174,7 +180,7 @@ class MQTTService {
       this.client.end(true);
       this.client = null;
       this.isConnected = false;
-      this.notifyStatus(false, 'Disconnected');
+      this.notifyStatus(false, "Disconnected");
     }
   }
 }

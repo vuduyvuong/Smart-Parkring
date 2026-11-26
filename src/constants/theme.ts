@@ -5,6 +5,8 @@
 
 import '@/global.css';
 
+// React Native provides this module at runtime; some TS setups omit its declarations.
+// @ts-ignore
 import { Platform } from 'react-native';
 
 export const Colors = {
